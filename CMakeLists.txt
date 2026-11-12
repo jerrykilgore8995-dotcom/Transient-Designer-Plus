@@ -50,3 +50,13 @@ target_compile_definitions(TdpEditorPreview PRIVATE
 target_link_libraries(TdpEditorPreview PRIVATE
   juce::juce_audio_utils juce::juce_dsp
   juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+
+# V2 DSP engine compiles standalone against C++17 for independent regression.
+add_executable(TdpV2Tests tests/V2EngineTests.cpp)
+target_include_directories(TdpV2Tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if(MSVC)
+ target_compile_options(TdpV2Tests PRIVATE /W4)
+else()
+ target_compile_options(TdpV2Tests PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+add_test(NAME TdpV2Tests COMMAND TdpV2Tests)
