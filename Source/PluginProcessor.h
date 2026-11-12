@@ -2,12 +2,12 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <array>
 #include <atomic>
-#include "TransientEngine.h"
+#include "TransientEngineV2.h"
 
-class TdpAudioProcessor final : public juce::AudioProcessor {
+class TdpAudioProcessor final : public juce::AudioProcessor, private juce::AsyncUpdater {
 public:
     TdpAudioProcessor();
-    ~TdpAudioProcessor() override = default;
+    ~TdpAudioProcessor() override { cancelPendingUpdate(); }
     const juce::String getName() const override { return "Transient Designer Plus"; }
     void prepareToPlay(double sampleRate,int samplesPerBlock) override;
     void releaseResources() override {}
@@ -31,11 +31,20 @@ public:
     std::array<std::atomic<float>,3> bandActivity;
     std::atomic<float> inputPeak{0},outputPeak{0};
     std::atomic<int> presetIndex{-1};
+    static constexpr int ScopeSize=512;
+    std::array<std::atomic<float>,ScopeSize> scopeInput {};
+    std::array<std::atomic<float>,ScopeSize> scopeOutput {};
+    std::array<std::atomic<float>,ScopeSize> scopeAttack {};
+    std::array<std::atomic<float>,ScopeSize> scopeSustain {};
+    std::atomic<int> scopeWrite{0};
+    std::atomic<int> pendingHostLatency{0};
     void applyFactoryPreset(int index);
-    static const std::array<const char*,8>& presetNames();
+    static const std::array<const char*,12>& presetNames();
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();
-    tdp::Settings readSettings() const noexcept;
-    tdp::Engine engine;
+    tdp2::Settings readSettings() const noexcept;
+    void handleAsyncUpdate() override;
+    tdp2::Engine engine;
+    int scopeDecimator=0;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TdpAudioProcessor)
 };
