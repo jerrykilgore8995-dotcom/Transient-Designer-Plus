@@ -110,6 +110,7 @@ public:
         smoothA=onePole(8.f,fs);
         delay.assign((size_t)(fs*.004f)+128, {0.f,0.f});
         reset();
+        filtersReady=false; // sample-rate changes must recalculate crossover coefficients
         setSettings(settings);
     }
     void reset() {
