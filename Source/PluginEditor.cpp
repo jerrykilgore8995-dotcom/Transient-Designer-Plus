@@ -359,9 +359,6 @@ void TdpAudioProcessorEditor::paint(juce::Graphics& g) {
         drawPanel(g,{65,724,1490,179},"DETECTOR & GLOBAL CONTROL");
         g.setColour(juce::Colour::fromRGB(60,71,79));g.drawVerticalLine(719,766,875);
         g.drawVerticalLine(1157,766,875);
-        for(const auto& lab:labels)
-            text(g,lab.text,lab.cx-lab.width/2,lab.y,lab.width,20,12.3f,
-                 lab.y<185?juce::Colour::fromRGB(211,225,237):ink);
         text(g,"CLEAN SIGNAL PATH  |  NO ADDED HARMONICS",1065,731,456,25,
              11,juce::Colour::fromRGB(198,218,231),juce::Justification::centredRight);
     } else {
