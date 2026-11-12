@@ -235,6 +235,8 @@ public:
         rmsDry=rmsWet=0.f;autoGainDb=0.f;autoCounter=0;
         activity.fill(0.f);channelGain={{{1.f,1.f},{1.f,1.f},{1.f,1.f}}};
         shapeForScope={};scopeTargetDb=0.f;fir.reset();spectral.reset();guard.reset();
+        for(auto& ch:spectralDryDelay)ch.fill(0.f);
+        spectralDryHead=0;
     }
     void configure(Settings s,bool force=false) noexcept {
         s.bands=std::clamp(s.bands,1,3);
@@ -397,6 +399,21 @@ public:
             const float side=(wet[0]-wet[1])*.5f*width;
             wet[0]=m+side;wet[1]=m-side;
         }
+        // Advanced STFT operates on the fully shaped WET path first.
+        // Global parallel mix and delta audition must include ALL processing.
+        if(settings.spectral) {
+            float a=0.f,b=0.f;
+            spectral.process(wet[0],wet[1],settings.spectralAttackDb,
+                             settings.spectralTonalDb,settings.spectralSense,a,b);
+            wet[0]=a;wet[1]=b;
+            // Phase and latency-aligned dry reference without any spectral alteration.
+            for(int ch=0;ch<2;++ch) {
+                spectralDryDelay[(size_t)ch][(size_t)spectralDryHead]=dry[ch];
+                dry[ch]=spectralDryDelay[(size_t)ch]
+                    [(size_t)((spectralDryHead+1024-512)%1024)];
+            }
+            spectralDryHead=(spectralDryHead+1)&1023;
+        }
         float out[2];
         for(int ch=0;ch<2;++ch)
             out[ch]=settings.delta?wet[ch]-dry[ch]:dry[ch]+wetSlew*(wet[ch]-dry[ch]);
@@ -415,12 +432,6 @@ public:
             autoGainDb+=(0.f-autoGainDb)*autoSmooth;
         }
         out[0]*=outGain;out[1]*=outGain;
-        if(settings.spectral) {
-            float a=0,b=0;
-            spectral.process(out[0],out[1],settings.spectralAttackDb,settings.spectralTonalDb,
-                             settings.spectralSense,a,b);
-            out[0]=a;out[1]=b;
-        }
         if(settings.peakGuard)
             guard.run(out[0],out[1],settings,guardSamples,guardRelease,guardCeiling);
         left=std::isfinite(out[0])?out[0]:0.f;
@@ -475,6 +486,8 @@ private:
     std::array<std::array<std::array<tdp::Biquad,2>,2>,2> iir {};
     std::array<std::array<std::array<float,kDelaySize>,2>,3> bandDelay {};
     std::array<std::array<float,kDelaySize>,2> dryDelay {};
+    std::array<std::array<float,1024>,2> spectralDryDelay {};
+    int spectralDryHead=0;
     std::array<std::array<float,2>,3> channelGain {{{1.f,1.f},{1.f,1.f},{1.f,1.f}}};
     LinearPhaseSplit fir;
     SpectralSeparation spectral;
