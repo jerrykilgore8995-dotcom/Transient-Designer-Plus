@@ -110,5 +110,43 @@ int main(){
         std::chrono::high_resolution_clock::now()-t1).count();
     std::cout<<"all-features processing 2s wall clock="<<sec<<"s energy="<<outputEnergy<<"\n";
     check(outputEnergy>1,"all-feature audio output energy");
+    // The global Mix must bypass *both* the envelope shaper and spectral stage.
+    Settings parallel;
+    parallel.spectral=true;
+    parallel.spectralAttackDb=9.f;
+    parallel.spectralTonalDb=-8.f;
+    parallel.mix=0.f;
+    parallel.band[1].attackDb=17.f;
+    Engine wetZero;wetZero.prepare(SR,128);wetZero.configure(parallel,true);
+    std::array<float,10000> dryReference {};
+    float spectralMixError=0.f;
+    for(int n=0;n<10000;++n){
+        const float x=.23f*std::sin(.127f*n)+.1f*std::sin(.43f*n);
+        dryReference[(size_t)n]=x;
+        float l=x,r=x;wetZero.process(l,r);
+        if(n>2048)spectralMixError=std::max(spectralMixError,
+            std::fabs(l-dryReference[(size_t)(n-512)]));
+    }
+    std::cout<<"Spectral mix-zero null error="<<spectralMixError<<"\n";
+    check(spectralMixError<1.e-6f,"Dry/Wet 0 must bypass spectral changes");
+    // Delta Listen should reveal ONLY spectral processing when envelope gain is zero.
+    parallel.mix=1.f;parallel.delta=true;
+    parallel.band[1].attackDb=0.f;
+    Engine delta;delta.prepare(SR,128);delta.configure(parallel,true);
+    double deltaPower=0.f;
+    for(int n=0;n<12000;++n){
+        float l=.17f*std::sin(.21f*n),r=.17f*std::sin(.21f*n);
+        delta.process(l,r);
+        if(n>2048)deltaPower+=l*l;
+    }
+    std::cout<<"Spectral delta energy="<<deltaPower<<"\n";
+    check(deltaPower>.001,"Spectral difference must be audible in Delta Listen");
+    Settings negativeRoom;
+    negativeRoom.roomAmount=-2.f;
+    negativeRoom.roomEarlyMs=12.f;
+    negativeRoom.roomBloomMs=190.f;
+    const float reducedRoom=burst(negativeRoom,t+SR/20,t+SR/8);
+    check(reducedRoom<plainRoom*.97f,"Negative room must suppress audible tail");
+
     std::cout<<"V2 DSP PASS\n";
 }
