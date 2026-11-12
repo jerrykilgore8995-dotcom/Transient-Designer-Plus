@@ -212,12 +212,24 @@ public:
         for(int b=first;b<3;++b) {
             if(settings.bands==2 && b==1)continue;
             const auto& bs=settings.band[b];
-            float gl=detectors[b][0].tick(src[b][0],bs,settings,detCoef[(size_t)b],fs);
-            float gr=detectors[b][1].tick(src[b][1],bs,settings,detCoef[(size_t)b],fs);
-            float linked=detectors[b][2].tick(std::max(std::fabs(src[b][0]),std::fabs(src[b][1])),bs,settings,detCoef[(size_t)b],fs);
-            float link=settings.stereo==1?0.f:settings.link;
-            gl+=(linked-gl)*link;
-            gr+=(linked-gr)*link;
+            const float link=settings.stereo==1?0.f:settings.link;
+            float gl=0.f,gr=0.f;
+            // 100%-linked mode: only one detector for both channels, not three.
+            // This greatly reduces CPU load at the default stereo setting.
+            if(link>=.999f) {
+                gl=gr=detectors[b][2].tick(
+                    std::max(std::fabs(src[b][0]),std::fabs(src[b][1])),
+                    bs,settings,detCoef[(size_t)b],fs);
+            } else {
+                gl=detectors[b][0].tick(src[b][0],bs,settings,detCoef[(size_t)b],fs);
+                gr=detectors[b][1].tick(src[b][1],bs,settings,detCoef[(size_t)b],fs);
+                if(link>0.f) {
+                    const float linked=detectors[b][2].tick(
+                        std::max(std::fabs(src[b][0]),std::fabs(src[b][1])),
+                        bs,settings,detCoef[(size_t)b],fs);
+                    gl+=(linked-gl)*link;gr+=(linked-gr)*link;
+                }
+            }
             if(!anySolo || bs.solo) {
                 const float lg=fastGain(gl);
                 out[0]+=src[b][0]*lg;
