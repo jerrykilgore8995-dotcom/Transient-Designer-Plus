@@ -34,5 +34,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Transient-Designer-Plus-v2.0-Windows-x64-VST3
-          path: Transient_Designer_Plus_v1.0_Windows_x64_VST3.zip
+          path: Transient_Designer_Plus_v2.0_Windows_x64_VST3.zip
           if-no-files-found: error
