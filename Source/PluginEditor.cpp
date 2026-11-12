@@ -68,7 +68,7 @@ void RackLook::drawToggleButton(juce::Graphics& g,juce::ToggleButton& b,bool hov
     }
     if(hover||down){g.setColour(juce::Colours::white.withAlpha(.2f));g.drawRoundedRectangle(sq,2.f,1.f);}
     text(g,b.getButtonText(),(int)area.getX()+30,(int)area.getY(),(int)area.getWidth()-30,
-         (int)area.getHeight(),12.5f,ink,juce::Justification::centredLeft);
+         (int)area.getHeight(),12.5f,b.findColour(juce::ToggleButton::textColourId),juce::Justification::centredLeft);
 }
 void RackLook::drawComboBox(juce::Graphics& g,int w,int h,bool,
                              int,int,int,int,juce::ComboBox&) {
@@ -89,6 +89,7 @@ TdpAudioProcessorEditor::TdpAudioProcessorEditor(TdpAudioProcessor& p):
     setOpaque(true);
     setSize(1620,930);
     presets.setColour(juce::ComboBox::textColourId,juce::Colour::fromRGB(127,206,255));
+    presets.setTextWhenNothingSelected("MANUAL / CUSTOM");
     for(int i=0;i<8;++i)presets.addItem(TdpAudioProcessor::presetNames()[(size_t)i],i+1);
     addAndMakeVisible(presets);
     presets.onChange=[this]{if(presets.getSelectedId()>0)processor.applyFactoryPreset(presets.getSelectedId()-1);};
@@ -163,6 +164,9 @@ void TdpAudioProcessorEditor::knob(const juce::String& id,const juce::String& la
 }
 void TdpAudioProcessorEditor::switchButton(const juce::String& id,const juce::String& label,int x,int y,int w) {
     auto b=std::make_unique<juce::ToggleButton>(label);
+    const bool topRow = id=="delta" || id=="auto" || id=="guard";
+    b->setColour(juce::ToggleButton::textColourId,
+        topRow ? juce::Colour::fromRGB(218,231,242) : ink);
     addAndMakeVisible(*b);
     toggleLinks.push_back(std::make_unique<BA>(processor.state,id,*b));
     positions.push_back({b.get(),{x,y,w,29}});
@@ -212,7 +216,8 @@ void TdpAudioProcessorEditor::drawMeter(juce::Graphics& g,juce::Rectangle<float>
         g.fillRoundedRectangle(xx,r.getY()+8,(r.getWidth()-24)/n-3,r.getHeight()-16,1.5f);
     }
     text(g,label,(int)r.getX()+8,(int)r.getY()-20,(int)r.getWidth()-16,18,
-         10,ink,juce::Justification::centredLeft);
+         10,r.getY()<190?juce::Colour::fromRGB(198,218,232):ink,
+         juce::Justification::centredLeft);
 }
 void TdpAudioProcessorEditor::paint(juce::Graphics& g) {
     g.fillAll(midnight);
@@ -239,7 +244,7 @@ void TdpAudioProcessorEditor::paint(juce::Graphics& g) {
     text(g,"FACTORY PATCH",420,70,252,20,12,juce::Colour::fromRGB(202,213,223));
     text(g,"PROCESSING",716,70,160,20,12,juce::Colour::fromRGB(202,213,223));
     text(g,"ROUTING",901,70,168,20,12,juce::Colour::fromRGB(202,213,223));
-    const char* titles[]={"LOW • THUMP","MID • BODY / FULL","HIGH • SNAP"};
+    const char* titles[]={"LOW - THUMP","MID - BODY / FULL","HIGH - SNAP"};
     for(int b=0;b<3;++b) {
         int x=65+b*495;
         drawPanel(g,{(float)x,198,470,509},titles[b]);
@@ -252,19 +257,17 @@ void TdpAudioProcessorEditor::paint(juce::Graphics& g) {
         // Highlights are informative, not misleading: unused bands are marked dormant.
         int mode=(int)processor.state.getRawParameterValue("mode")->load();
         bool active=mode==0?b==1:(mode==1?b!=1:true);
-        if(!active)text(g,"STANDBY",(int)x+255,255,195,22,12,juce::Colour::fromRGB(77,85,92));
+        if(!active)text(g,"STANDBY",(int)x+348,205,104,29,11,
+            juce::Colour::fromRGB(170,185,195));
     }
     drawPanel(g,{65,724,1490,179},"DETECTOR & GLOBAL CONTROL");
     g.setColour(juce::Colour::fromRGB(60,71,79));g.drawVerticalLine(719,766,875);
     g.drawVerticalLine(1157,766,875);
-    text(g,"DETECTION",87,746,600,18,12,ink,juce::Justification::centredLeft);
-    text(g,"BAND CROSSOVERS + LINK",733,746,405,18,12,ink,juce::Justification::centredLeft);
-    text(g,"PEAK SAFETY",1172,746,355,18,12,ink,juce::Justification::centredLeft);
     for(const auto& lab:labels)
         text(g,lab.text,lab.cx-lab.width/2,lab.y,lab.width,20,12.3f,
-             lab.y>720?ink:juce::Colour::fromRGB(31,41,50));
-    text(g,"CLEAN ENGINE  •  NO ADDED HARMONICS  •  OPTIONAL PEAK GUARD",735,879,410,16,
-         10,juce::Colour::fromRGB(24,51,76));
+             lab.y<185?juce::Colour::fromRGB(211,225,237):ink);
+    text(g,"CLEAN SIGNAL PATH  |  NO ADDED HARMONICS",1065,731,456,25,
+         11,juce::Colour::fromRGB(198,218,231),juce::Justification::centredRight);
     drawMeter(g,{938,149,113,22},processor.inputPeak.load()*12.f,"INPUT PEAK");
     drawMeter(g,{1062,149,113,22},processor.outputPeak.load()*12.f,"OUTPUT PEAK");
 }
