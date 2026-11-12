@@ -125,9 +125,10 @@ TdpAudioProcessorEditor::TdpAudioProcessorEditor(TdpAudioProcessor& p):
     knob("link","STEREO LINK",1072,787,77);
     knob("ceiling","CEILING",1222,787,77);
     choice("lookahead",{"NO LATENCY","1 ms","3 ms"},1374,797,169);
-    switchButton("delta","DELTA LISTEN",102,872,152);
-    switchButton("auto","AUTO LEVEL",283,872,152);
-    switchButton("guard","PEAK GUARD",464,872,152);
+    switchButton("delta","DELTA LISTEN",436,139,151);
+    switchButton("auto","AUTO LEVEL",600,139,143);
+    switchButton("guard","PEAK GUARD",764,139,160);
+    resized();
     startTimerHz(25);
 }
 TdpAudioProcessorEditor::~TdpAudioProcessorEditor() {
@@ -262,8 +263,8 @@ void TdpAudioProcessorEditor::paint(juce::Graphics& g) {
     for(const auto& lab:labels)
         text(g,lab.text,lab.cx-lab.width/2,lab.y,lab.width,20,12.3f,
              lab.y>720?ink:juce::Colour::fromRGB(31,41,50));
-    text(g,"CLEAN ENGINE  •  ZERO SATURATION  •  44.1 kHz READY",651,872,560,17,
-         12,juce::Colour::fromRGB(24,51,76));
-    drawMeter(g,{1081,137,170,25},processor.inputPeak.load()*12.f,"INPUT PEAK");
-    drawMeter(g,{1273,137,170,25},processor.outputPeak.load()*12.f,"OUTPUT PEAK");
+    text(g,"CLEAN ENGINE  •  NO ADDED HARMONICS  •  OPTIONAL PEAK GUARD",735,879,410,16,
+         10,juce::Colour::fromRGB(24,51,76));
+    drawMeter(g,{938,137,113,25},processor.inputPeak.load()*12.f,"INPUT PEAK");
+    drawMeter(g,{1062,137,113,25},processor.outputPeak.load()*12.f,"OUTPUT PEAK");
 }
