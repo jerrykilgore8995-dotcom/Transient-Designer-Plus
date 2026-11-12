@@ -25,6 +25,11 @@ private:
     TdpAudioProcessor& processor;
     RackLook skin;
     juce::ComboBox presets;
+    juce::TextButton advancedButton;
+    bool advancedPage=false;
+    size_t mainControlCount=0,mainLabelCount=0;
+    void updatePage();
+    void drawScope(juce::Graphics&,juce::Rectangle<float>) const;
     std::vector<std::unique_ptr<juce::Slider>> knobs;
     std::vector<std::unique_ptr<juce::ToggleButton>> toggles;
     std::vector<std::unique_ptr<juce::ComboBox>> combos;
