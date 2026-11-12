@@ -219,8 +219,8 @@ void TdpAudioProcessor::setStateInformation(const void* data,int size) {
 }
 const std::array<const char*,12>& TdpAudioProcessor::presetNames() {
     static const std::array<const char*,12> names {
-        "Neutral / Clean","Kick — Precision","Snare — Crack",
-        "Room — Bloom","Acoustic — Definition","Cymbals — Smooth",
+        "Neutral / Clean","Kick - Precision","Snare - Crack",
+        "Room - Bloom","Acoustic - Definition","Cymbals - Smooth",
         "Guitars - Pick","Drum Bus - Impact",
         "Double Kick - Focus","Room - Explosive","Transient - Pre-hit",
         "Spectral - Clean Presence"
