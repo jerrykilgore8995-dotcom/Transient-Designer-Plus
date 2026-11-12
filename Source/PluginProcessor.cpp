@@ -39,7 +39,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout TdpAudioProcessor::makeLayou
     addFloat(l,"satk","Side attack trim percent",0,200,100,1);
     addFloat(l,"msus","Mid sustain trim percent",0,200,100,1);
     addFloat(l,"ssus","Side sustain trim percent",0,200,100,1);
-    addFloat(l,"room","Room bloom amount percent",0,200,0,1);
+    addFloat(l,"room","Room bloom/cut percent",-200,200,0,1);
     addFloat(l,"roomearly","Room onset delay ms",0,200,25,1);
     addFloat(l,"roombloom","Room bloom time ms",30,750,220,1);
     addFloat(l,"roomdamp","Room damping",0,100,50,1);
