@@ -138,7 +138,7 @@ tdp2::Settings TdpAudioProcessor::readSettings() const noexcept {
     s.link=rv(state,"link")*.01f;
     s.lowHz=rv(state,"xlow");s.highHz=rv(state,"xhigh");
     s.inputDb=rv(state,"input");s.outputDb=rv(state,"output");
-    s.wet=rv(state,"mix")*.01f;
+    s.mix=rv(state,"mix")*.01f;
     s.sensitivity=rv(state,"sense")*.01f;
     s.peakBlend=rv(state,"peak")*.01f;
     s.sidechainHPF=rv(state,"schpf");
