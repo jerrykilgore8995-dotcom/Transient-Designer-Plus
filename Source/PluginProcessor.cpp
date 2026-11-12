@@ -93,6 +93,9 @@ TdpAudioProcessor::TdpAudioProcessor():
     for(auto& p:scopeOutput)p.store(0.f);
     for(auto& p:scopeAttack)p.store(0.f);
     for(auto& p:scopeSustain)p.store(0.f);
+    for(auto& p:scopeBody)p.store(0.f);
+    for(auto& p:scopeRoom)p.store(0.f);
+    for(auto& p:scopeGain)p.store(0.f);
 }
 bool TdpAudioProcessor::isBusesLayoutSupported(const BusesLayout& l) const {
     const auto in=l.getMainInputChannelSet(),out=l.getMainOutputChannelSet();
@@ -197,6 +200,9 @@ void TdpAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce::Midi
             scopeOutput[(size_t)i].store(.5f*(a+b),std::memory_order_relaxed);
             scopeAttack[(size_t)i].store(sh.attack,std::memory_order_relaxed);
             scopeSustain[(size_t)i].store(sh.sustain,std::memory_order_relaxed);
+            scopeBody[(size_t)i].store(sh.body,std::memory_order_relaxed);
+            scopeRoom[(size_t)i].store(sh.room,std::memory_order_relaxed);
+            scopeGain[(size_t)i].store(engine.liveGainDb()*.03f,std::memory_order_relaxed);
             scopeWrite.store((i+1)&(ScopeSize-1),std::memory_order_release);
         }
     }
