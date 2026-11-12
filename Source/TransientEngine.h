@@ -49,56 +49,71 @@ struct Biquad {
     }
     void reset() noexcept { z1=z2=0; }
 };
+struct DetectorCoefficients {
+    float hpfc=.01f,fastAtk=.1f,fastRel=.01f,slowAtk=.001f,slowRel=.0001f;
+    float rms=.003f,gainSmooth=.03f,decayMul=.999f,msPerSample=.0227f;
+};
 struct Detector {
-    float fast=0,slow=0,rms2=0,hpfLP=0,previousOnset=0;
-    float age=1.0e9f, eventStrength=0, gainDb=0;
+    float fast=0,slow=0,rms2=0,hpfLP=0;
+    float age=1.0e9f,eventStrength=0,gainDb=0,tail=1.f;
     bool armed=true;
-    float tick(float x,const BandSettings& b,const Settings& p,float sr) noexcept {
-        float aa=std::fabs(x);
-        // First-order detector-only HPF, disabled at 20 Hz for near-full-band response.
-        float hpfc=1.f-std::exp(-2*pi*p.sidechainHPF/sr);
-        hpfLP+=hpfc*(x-hpfLP);
-        float det=x-hpfLP;
-        float a=std::fabs(det);
-        float fcoef=a>fast?onePole(.22f,sr):onePole(14.f,sr);
-        float scoef=a>slow?onePole(14.f,sr):onePole(95.f,sr);
-        fast+=fcoef*(a-fast); slow+=scoef*(a-slow);
-        rms2+=onePole(9.f,sr)*(det*det-rms2);
+    // Only multiplication, a square root and occasional curve shaping in sample loop.
+    float tick(float x,const BandSettings& b,const Settings& p,
+               const DetectorCoefficients& c,float sr) noexcept {
+        hpfLP+=c.hpfc*(x-hpfLP);
+        const float det=x-hpfLP;
+        const float a=std::fabs(det);
+        fast+=(a>fast?c.fastAtk:c.fastRel)*(a-fast);
+        slow+=(a>slow?c.slowAtk:c.slowRel)*(a-slow);
+        rms2+=c.rms*(det*det-rms2);
         float measured=p.peakBlend*fast+(1.f-p.peakBlend)*std::sqrt(std::max(0.f,rms2));
-        float onset=std::max(0.f,(measured-slow)/(slow+0.00002f));
-        float threshold=.18f+(1.f-p.sensitivity)*1.18f;
-        float refractory=msSamples(std::max(8.f,b.attackMs*.40f),sr);
-        if (age>refractory && fast>0.000035f && armed && onset>threshold) {
+        const float onset=std::max(0.f,(measured-slow)/(slow+0.00002f));
+        const float threshold=.18f+(1.f-p.sensitivity)*1.18f;
+        const float refractory=msSamples(std::max(8.f,b.attackMs*.40f),sr);
+        if(age>refractory && fast>.000035f && armed && onset>threshold) {
             age=0.f;
+            tail=1.f;
             eventStrength=clampf((onset-threshold)/(.30f+p.edgeSoftness*.8f),.20f,1.f);
             armed=false;
         }
-        if (onset<threshold*.55f) armed=true;
-        previousOnset=onset;
-        // Independent attack / body / sustain envelopes, not compressor GR.
-        float tMs=age*1000.f/sr;
-        float aEnd=std::max(.35f,b.attackMs);
-        float aP=clampf(tMs/aEnd,0.f,1.f);
-        float attackWindow=tMs<aEnd?std::pow(1.f-aP,clampf(b.attackCurve,.20f,4.f)):0.f;
-        float bodyStart=aEnd*.42f;
-        float bodyP=(tMs-bodyStart)/std::max(5.f,b.bodyMs);
-        float bodyWindow=bodyP>0.f && bodyP<1.f ?
-            std::pow(std::sin(pi*bodyP),.65f+p.edgeSoftness*1.2f):0.f;
-        float sStart=aEnd+std::max(0.f,b.sustainHoldMs);
-        float sAge=tMs-sStart;
-        float sustainWindow=sAge>0.f ?
-            (1.f-std::exp(-sAge/6.f))*std::exp(-sAge/std::max(30.f,b.sustainDecayMs)):0.f;
-        float wanted=(b.attackDb*attackWindow+
-                      b.bodyDb*bodyWindow+
-                      b.sustainDb*sustainWindow)*eventStrength;
-        if (!b.enabled) wanted=0.f;
-        wanted=clampf(wanted,-30.f,24.f);
-        gainDb+=(wanted-gainDb)*onePole(.65f,sr);
-        if (age<1.0e9f) age+=1.f;
-        // denormal defense; never leave a DC offset in the audio path.
-        if (fast<1.0e-22f) fast=0.f;
-        if (slow<1.0e-22f) slow=0.f;
-        if (rms2<1.0e-36f) rms2=0.f;
+        if(onset<threshold*.55f) armed=true;
+        const float tMs=age*c.msPerSample;
+        const float aEnd=b.attackMs;
+        const float aP=clampf(tMs/aEnd,0.f,1.f);
+        float attackWindow=0.f;
+        if(tMs<aEnd) {
+            const float v=1.f-aP;
+            if(b.attackCurve<1.f) {
+                const float blend=clampf((b.attackCurve-.20f)/.8f,0.f,1.f);
+                attackWindow=std::sqrt(std::sqrt(v))*(1.f-blend)+v*blend;
+            } else {
+                const float squared=v*v;
+                const float quartic=squared*squared;
+                const float blend=clampf((b.attackCurve-1.f)/3.f,0.f,1.f);
+                attackWindow=v*(1.f-blend)+quartic*blend;
+            }
+        }
+        const float bodyStart=aEnd*.42f;
+        const float bodyP=(tMs-bodyStart)/b.bodyMs;
+        float bodyWindow=0.f;
+        if(bodyP>0.f && bodyP<1.f) {
+            const float bump=4.f*bodyP*(1.f-bodyP);
+            bodyWindow=bump*(1.f-p.edgeSoftness)+bump*bump*p.edgeSoftness;
+        }
+        const float sAge=tMs-(aEnd+b.sustainHoldMs);
+        float sustainWindow=0.f;
+        if(sAge>0.f && sAge<25000.f) {
+            tail*=c.decayMul;
+            sustainWindow=tail*(sAge/(sAge+6.f));
+        }
+        const float wanted=b.enabled?
+            clampf((b.attackDb*attackWindow+b.bodyDb*bodyWindow+
+                    b.sustainDb*sustainWindow)*eventStrength,-30.f,24.f):0.f;
+        gainDb+=(wanted-gainDb)*c.gainSmooth;
+        if(age<1.0e9f)age+=1.f;
+        if(fast<1.0e-22f)fast=0.f;
+        if(slow<1.0e-22f)slow=0.f;
+        if(rms2<1.0e-36f)rms2=0.f;
         return gainDb;
     }
 };
@@ -108,6 +123,12 @@ public:
         (void)maxBlock;
         fs=std::max(8000.f,sampleRate);
         smoothA=onePole(8.f,fs);
+        rmsMatchA=onePole(750.f,fs);
+        autoLevelA=onePole(200.f,fs);
+        guardReleaseA=onePole(90.f,fs);
+        guardOffA=onePole(60.f,fs);
+        for(size_t i=0;i<gainTable.size();++i)
+            gainTable[i]=dbGain(-30.f+(54.f*(float)i/(float)(gainTable.size()-1)));
         delay.assign((size_t)(fs*.004f)+128, {0.f,0.f});
         reset();
         filtersReady=false; // sample-rate changes must recalculate crossover coefficients
@@ -147,13 +168,25 @@ public:
             filtersReady=true;
         }
         settings=s;
+        inputTarget=dbGain(settings.inputDb);
+        outputTarget=dbGain(settings.outputDb);
+        guardCeiling=dbGain(clampf(settings.ceilingDb,-9.f,0.f));
+        for(int i=0;i<3;++i){
+            auto& c=detCoef[(size_t)i];
+            c.hpfc=1.f-std::exp(-2*pi*s.sidechainHPF/fs);
+            c.fastAtk=onePole(.22f,fs);c.fastRel=onePole(14.f,fs);
+            c.slowAtk=onePole(14.f,fs);c.slowRel=onePole(95.f,fs);
+            c.rms=onePole(9.f,fs);c.gainSmooth=onePole(.65f,fs);
+            c.msPerSample=1000.f/fs;
+            c.decayMul=std::exp(-1.f/msSamples(s.band[(size_t)i].sustainDecayMs,fs));
+        }
         latency=s.peakGuard?(int)std::lround(fs*.001f*s.lookahead):0;
     }
     int latencySamples() const noexcept { return latency; }
     const std::array<float,3>& activityDb() const noexcept { return activity; }
     void process(float& left,float& right) noexcept {
-        inputSmooth+=(dbGain(settings.inputDb)-inputSmooth)*smoothA;
-        outputSmooth+=(dbGain(settings.outputDb)-outputSmooth)*smoothA;
+        inputSmooth+=(inputTarget-inputSmooth)*smoothA;
+        outputSmooth+=(outputTarget-outputSmooth)*smoothA;
         wetSmooth+=(clampf(settings.wet,0.f,1.f)-wetSmooth)*smoothA;
         float l=left*inputSmooth,r=right*inputSmooth;
         const float dryL=l,dryR=r;
@@ -179,15 +212,16 @@ public:
         for(int b=first;b<3;++b) {
             if(settings.bands==2 && b==1)continue;
             const auto& bs=settings.band[b];
-            float gl=detectors[b][0].tick(src[b][0],bs,settings,fs);
-            float gr=detectors[b][1].tick(src[b][1],bs,settings,fs);
-            float linked=detectors[b][2].tick(std::max(std::fabs(src[b][0]),std::fabs(src[b][1])),bs,settings,fs);
+            float gl=detectors[b][0].tick(src[b][0],bs,settings,detCoef[(size_t)b],fs);
+            float gr=detectors[b][1].tick(src[b][1],bs,settings,detCoef[(size_t)b],fs);
+            float linked=detectors[b][2].tick(std::max(std::fabs(src[b][0]),std::fabs(src[b][1])),bs,settings,detCoef[(size_t)b],fs);
             float link=settings.stereo==1?0.f:settings.link;
             gl+=(linked-gl)*link;
             gr+=(linked-gr)*link;
             if(!anySolo || bs.solo) {
-                out[0]+=src[b][0]*dbGain(gl);
-                out[1]+=src[b][1]*dbGain(gr);
+                const float lg=fastGain(gl);
+                out[0]+=src[b][0]*lg;
+                out[1]+=src[b][1]*(link>=.999f?lg:fastGain(gr));
             }
             activity[b]=std::max(std::fabs(gl),std::fabs(gr));
         }
@@ -198,21 +232,21 @@ public:
         else {l=dryL+(wetL-dryL)*wetSmooth;r=dryR+(wetR-dryR)*wetSmooth;}
         // Slow RMS comparison is optional; never active in the unity/null path.
         if(settings.autoGain && !settings.delta) {
-            float alpha=onePole(750.f,fs);
+            float alpha=rmsMatchA;
             dry2+=(.5f*(dryL*dryL+dryR*dryR)-dry2)*alpha;
             wet2+=(.5f*(l*l+r*r)-wet2)*alpha;
             float desired=clampf(10.f*std::log10((dry2+1.e-12f)/(wet2+1.e-12f)),-9.f,9.f);
-            autoDb+=(desired-autoDb)*onePole(200.f,fs);
+            autoDb+=(desired-autoDb)*autoLevelA;
             float g=dbGain(autoDb);l*=g;r*=g;
-        } else autoDb+=(0.f-autoDb)*onePole(200.f,fs);
+        } else autoDb+=(0.f-autoDb)*autoLevelA;
         l*=outputSmooth;r*=outputSmooth;
         if(settings.peakGuard) {
-            float ceiling=dbGain(clampf(settings.ceilingDb,-9.f,0.f));
+            float ceiling=guardCeiling;
             float peak=std::max(std::fabs(l),std::fabs(r));
             float request=peak>ceiling?ceiling/(peak+1.e-20f):1.f;
             if(request<guardGain) guardGain=request;
-            else guardGain+=(request-guardGain)*onePole(90.f,fs);
-        } else guardGain+=(1.f-guardGain)*onePole(60.f,fs);
+            else guardGain+=(request-guardGain)*guardReleaseA;
+        } else guardGain+=(1.f-guardGain)*guardOffA;
         if(latency>0) {
             const size_t len=delay.size();
             delay[delayPos]={l,r};
@@ -221,7 +255,7 @@ public:
             delayPos=(delayPos+1)%len;
         }
         if(settings.peakGuard) {
-            const float ceiling=dbGain(clampf(settings.ceilingDb,-9.f,0.f));
+            const float ceiling=guardCeiling;
             float g=guardGain;
             float peak=std::max(std::fabs(l),std::fabs(r));
             if(peak*g>ceiling)g=ceiling/(peak+1.e-20f);
@@ -232,13 +266,22 @@ public:
         right=std::isfinite(r)?r:0.f;
     }
 private:
+    float fastGain(float d) const noexcept {
+        if(std::fabs(d)<1.e-7f)return 1.f;
+        const float x=clampf(d,-30.f,24.f)* (4096.f/54.f) + 30.f*(4096.f/54.f);
+        const int i=std::min(4095,std::max(0,(int)x));
+        return gainTable[(size_t)i]+(gainTable[(size_t)i+1]-gainTable[(size_t)i])*(x-i);
+    }
     Settings settings;
     float fs=44100.f,smoothA=.001f;
+    float rmsMatchA=.00001f,autoLevelA=.0001f,guardReleaseA=.0001f,guardOffA=.0001f;
+    float inputTarget=1.f,outputTarget=1.f,guardCeiling=.944f;
+    std::array<float,4097> gainTable {};
+    std::array<DetectorCoefficients,3> detCoef {};
     bool filtersReady=false;
     // Two complementary crossover splits, each 4th-order lowpass.
     std::array<std::array<std::array<Biquad,2>,2>,2> filters {};
     std::array<std::array<Detector,3>,3> detectors {};
-    std::array<std::array<float,2>,3> unusedScratch {};
     std::vector<std::array<float,2>> delay;
     size_t delayPos=0; int latency=0;
     float inputSmooth=1.f,outputSmooth=1.f,wetSmooth=1.f,guardGain=1.f;
