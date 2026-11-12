@@ -130,6 +130,9 @@ void TdpAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce::Midi
     auto acts=engine.activityDb();
     for(int i=0;i<3;++i) bandActivity[i].store(acts[(size_t)i],std::memory_order_relaxed);
 }
+juce::AudioProcessorEditor* TdpAudioProcessor::createEditor() {
+    return new TdpAudioProcessorEditor(*this);
+}
 void TdpAudioProcessor::getStateInformation(juce::MemoryBlock& block) {
     std::unique_ptr<juce::XmlElement> xml(state.copyState().createXml());
     copyXmlToBinary(*xml,block);
