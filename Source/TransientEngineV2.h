@@ -65,13 +65,14 @@ struct Detector {
     float fast=0.f,slow=0.f,rms2=0.f,noise=.00003f,peak=0.f;
     float hpLP=0.f,smoothedGain=0.f,eventStrength=0.f,ageMs=1.e7f;
     float previousFast=0.f,tail=1.f,gate=0.f;
-    float roomAge=0.f,roomBody=0.f;
+    float roomRise=0.f,roomTail=1.f;
     bool armed=true;
     Shape last;
     void reset() noexcept {*this=Detector{};}
     Shape tick(float sample,const Settings& s,const Band& b,float fs,
                float aFast,float rFast,float aSlow,float rSlow,float aRms,
-               float aGain,float hpCoef,float decayCoefficient) noexcept {
+               float aGain,float hpCoef,float decayCoefficient,
+               float noiseGateAmp,float roomRiseMul,float roomDecayMul) noexcept {
         hpLP+=hpCoef*(sample-hpLP);
         const float a=std::fabs(sample-hpLP);
         fast+=(a>fast?aFast:rFast)*(a-fast);
@@ -87,16 +88,19 @@ struct Detector {
         previousFast=fast;
         const float elapsed=ageMs;
         const bool minimumGap=elapsed>=s.rearmMs;
-        const bool eventStrong=level>std::max(dbGain(s.noiseGateDb),noise*2.f);
+        const bool eventStrong=level>std::max(noiseGateAmp,noise*2.f);
         const bool group=(s.grouping==2 && elapsed<s.groupWindowMs);
         const bool autoGroup=(s.grouping==1 && elapsed<s.groupWindowMs
                               && !(growth>peak*.007f && novelty>threshold*1.65f));
         bool trigger=minimumGap && !group && !autoGroup && eventStrong &&
                      novelty>threshold && (armed || growth>peak*.0035f);
         if(trigger){
-            ageMs=0.f;
+            // Negative event age implements a pre-attack rise. At the delayed
+            // audio onset, the envelope is at its maximum rather than decayed.
+            ageMs=-s.lookaheadMs;
             peak=std::max(level,0.00003f);
-            tail=1.f;eventStrength=clampf((novelty-threshold)*1.7f,.15f,1.f);
+            tail=1.f;roomRise=0.f;roomTail=1.f;
+            eventStrength=clampf((novelty-threshold)*1.7f,.15f,1.f);
             armed=false;
         } else {
             peak=std::max(level,peak*.99975f);
@@ -106,10 +110,13 @@ struct Detector {
         const float atkLen=std::max(.35f,b.attackMs);
         const float atkP=clampf(age/atkLen,0.f,1.f);
         float attack=0.f;
-        if(age<atkLen){
+        if(age<0.f && s.lookaheadMs>0.f){
+            // Pre-transient rise is smooth and reaches unity at the true hit.
+            const float u=clampf((age+s.lookaheadMs)/s.lookaheadMs,0.f,1.f);
+            attack=(u*u*(3.f-2.f*u))*eventStrength;
+        } else if(age<atkLen){
             const float x=1.f-atkP;
             const float exponent=clampf(b.attackCurve,.2f,4.f);
-            // Power only during active attack; outside: no expensive operations.
             attack=std::pow(x,exponent)*eventStrength;
         }
         const float bodyStart=atkLen*.40f;
@@ -121,7 +128,7 @@ struct Detector {
         }
         const float since=age-(atkLen+b.holdMs);
         float sustain=0.f,room=0.f;
-        const float audibleGate=std::max(dbGain(s.noiseGateDb),noise*1.6f);
+        const float audibleGate=std::max(noiseGateAmp,noise*1.6f);
         const float gateTarget=clampf((level-audibleGate)/(audibleGate*1.5f+1.e-6f),0.f,1.f);
         gate+=onePoleCached*(gateTarget-gate);
         if(since>0.f && since<20000.f){
@@ -131,10 +138,10 @@ struct Detector {
             sustain=(since/(since+8.f))*shape*gate*eventStrength;
         }
         if(s.roomAmount>0.f && age>s.roomEarlyMs){
-            const float t=age-s.roomEarlyMs;
-            const float bloom=(1.f-std::exp(-t/std::max(4.f,s.roomBloomMs*.17f)));
-            const float decay=std::exp(-t/std::max(25.f,s.roomBloomMs*(1.f+3.f*s.roomDamp)));
-            room=bloom*decay*gate*eventStrength;
+            // Stateful exponential equivalent; no exp() inside the sample loop.
+            roomRise=1.f-(1.f-roomRise)*roomRiseMul;
+            roomTail*=roomDecayMul;
+            room=roomRise*roomTail*gate*eventStrength;
         }
         last={attack,body,sustain,room};
         ageMs=std::min(1.e7f,ageMs+1000.f/fs);
@@ -164,7 +171,8 @@ public:
     }
     void reset() noexcept {for(auto& v:hist)v.fill(0.f);for(auto& v:del)v.fill(0.f);
         phasePos=0;delPos=0;smoothed=1.f;}
-    void run(float& l,float& r,const Settings& s,int lookSamples,float rel) noexcept {
+    void run(float& l,float& r,const Settings& s,int lookSamples,float rel,
+             float ceiling) noexcept {
         if(!s.peakGuard)return;
         hist[0][(size_t)phasePos]=l;hist[1][(size_t)phasePos]=r;
         float peak=std::max(std::fabs(l),std::fabs(r));
@@ -180,7 +188,6 @@ public:
             }
         }
         phasePos=(phasePos+1)%17;
-        const float ceiling=dbGain(s.ceilingDb);
         const float requested=peak>ceiling?ceiling/(peak+1.e-20f):1.f;
         if(requested<smoothed)smoothed=requested;
         else smoothed+=(requested-smoothed)*rel;
@@ -212,6 +219,9 @@ public:
         inputSlew=onePole(8.f,fs);gainSlew=onePole(1.5f,fs);
         autoRms=onePole(750.f,fs);autoSmooth=onePole(180.f,fs);
         guardRelease=onePole(70.f,fs);
+        fastAtk=onePole(.13f,fs);fastRel=onePole(9.f,fs);
+        slowAtk=onePole(16.f,fs);slowRel=onePole(160.f,fs);
+        rmsCoef=onePole(11.f,fs);
         reset();
         configure(settings,true);
     }
@@ -278,10 +288,15 @@ public:
         const auto oldGrouping=settings.grouping;
         settings=s;
         // No FFT, allocation or parameter notifications from this method.
-        targetInput=dbGain(s.inputDb);targetOutput=dbGain(s.outputDb);
-        fastAtk=onePole(.13f,fs);fastRel=onePole(9.f,fs);
-        slowAtk=onePole(16.f,fs);slowRel=onePole(160.f,fs);
-        rmsCoef=onePole(11.f,fs);
+        if(force||s.inputDb!=previousInputDb){targetInput=dbGain(s.inputDb);previousInputDb=s.inputDb;}
+        if(force||s.outputDb!=previousOutputDb){targetOutput=dbGain(s.outputDb);previousOutputDb=s.outputDb;}
+        if(force||s.noiseGateDb!=previousFloorDb){noiseGateAmp=dbGain(s.noiseGateDb);previousFloorDb=s.noiseGateDb;}
+        if(force||s.ceilingDb!=previousCeilingDb){guardCeiling=dbGain(s.ceilingDb);previousCeilingDb=s.ceilingDb;}
+        if(force||s.roomBloomMs!=previousRoomBloom||s.roomDamp!=previousRoomDamp){
+            roomRiseMul=std::exp(-1.f/(fs*std::max(4.f,s.roomBloomMs*.17f)*.001f));
+            roomDecayMul=std::exp(-1.f/(fs*std::max(25.f,s.roomBloomMs*(1.f+3.f*s.roomDamp))*.001f));
+            previousRoomBloom=s.roomBloomMs;previousRoomDamp=s.roomDamp;
+        }
         lookSamples=(int)std::lround(fs*s.lookaheadMs*.001f);
         guardSamples=s.peakGuard?(int)std::lround(fs*s.guardLookaheadMs*.001f):0;
         firSamples=s.bands>1&&s.crossover==1?LinearPhaseSplit::latency:0;
@@ -399,7 +414,7 @@ public:
             out[0]=a;out[1]=b;
         }
         if(settings.peakGuard)
-            guard.run(out[0],out[1],settings,guardSamples,guardRelease);
+            guard.run(out[0],out[1],settings,guardSamples,guardRelease,guardCeiling);
         left=std::isfinite(out[0])?out[0]:0.f;
         right=std::isfinite(out[1])?out[1]:0.f;
     }
@@ -407,7 +422,8 @@ private:
     Shape tickDetector(int b,int ch,float x,const Band& band) noexcept {
         return detectors[(size_t)b][(size_t)ch].tick(
             x,settings,band,fs,fastAtk,fastRel,slowAtk,slowRel,rmsCoef,
-            gainSlew,hpCoef,decay[(size_t)b]);
+            gainSlew,hpCoef,decay[(size_t)b],
+            noiseGateAmp,roomRiseMul,roomDecayMul);
     }
     float fastGain(float db) const noexcept {
         if(std::fabs(db)<1.e-7f)return 1.f;
@@ -432,6 +448,10 @@ private:
     float fs=44100.f;
     float inputSlew=.001f,gainSlew=.01f,autoRms=.0001f,autoSmooth=.0001f;
     float guardRelease=.0001f,hpCoef=.01f;
+    float noiseGateAmp=.0001f,guardCeiling=.944f,roomRiseMul=.99f,roomDecayMul=.999f;
+    float previousFloorDb=999.f,previousCeilingDb=999.f;
+    float previousRoomBloom=-1.f,previousRoomDamp=-1.f;
+    float previousInputDb=999.f,previousOutputDb=999.f;
     float fastAtk=.1f,fastRel=.01f,slowAtk=.003f,slowRel=.0001f,rmsCoef=.003f;
     float inGain=1.f,outGain=1.f,wetSlew=1.f,targetInput=1.f,targetOutput=1.f;
     float rmsDry=0.f,rmsWet=0.f,autoGainDb=0.f,autoTarget=0.f;
