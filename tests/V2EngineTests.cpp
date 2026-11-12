@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <random>
 
 namespace {
@@ -12,26 +13,26 @@ using Engine=tdp2::Engine;using Settings=tdp2::Settings;
 constexpr int SR=44100;
 void check(bool ok,const char* what){if(!ok){std::cerr<<"FAILED: "<<what<<"\n";std::exit(1);}}
 float burst(const Settings& setting,int from,int to,float frequency=300.f) {
-    Engine p;p.prepare(SR,128);p.configure(setting,true);
+    auto p=std::make_unique<Engine>();p->prepare(SR,128);p->configure(setting,true);
     double sum=0;int count=0;
     for(int n=0;n<SR;++n){
         const int t=n-SR/8;
         const float amp=t<0?0.f:.25f*std::exp(-t/(SR*.18f));
         float l=amp*std::sin(2*3.14159265f*frequency*n/SR),r=l;
-        p.process(l,r);
+        p->process(l,r);
         if(n>=from&&n<to){sum+=l*l;++count;}
     }
     return std::sqrt(sum/std::max(1,count));
 }
 void unity(const char* name,Settings s,int latency,float tolerance) {
-    Engine p;p.prepare(SR,128);p.configure(s,true);
-    check(p.latencySamples()==latency,"expected PDC samples");
+    auto p=std::make_unique<Engine>();p->prepare(SR,128);p->configure(s,true);
+    check(p->latencySamples()==latency,"expected PDC samples");
     std::array<float,16384> reference {};
     float error=0.f;
     for(int n=0;n<16384;++n){
         const float x=.17f*std::sin(n*.043f)+.23f*std::sin(n*.361f);
         reference[(size_t)n]=x;
-        float l=x,r=x*.65f;p.process(l,r);
+        float l=x,r=x*.65f;p->process(l,r);
         if(n>=2048){
             float target=reference[(size_t)(n-latency)];
             error=std::max(error,std::fabs(l-target));
@@ -82,13 +83,13 @@ int main(){
     check(std::isfinite(centered)&&std::isfinite(off),"band-focus output finite");
     s.band[1].attackDb=0;s.band[1].focusMix=0;
     s.peakGuard=true;s.peakGuard4x=true;s.ceilingDb=-6;s.guardLookaheadMs=1;
-    Engine guard;guard.prepare(SR,128);guard.configure(s,true);
-    check(guard.latencySamples()==44,"1ms guard latency");
+    auto guard=std::make_unique<Engine>();guard->prepare(SR,128);guard->configure(s,true);
+    check(guard->latencySamples()==44,"1ms guard latency");
     const float ceiling=tdp::dbGain(-6);
     float maxPeak=0;
     for(int n=0;n<SR;++n){
         float l=1.7f*std::sin(.05f*n),r=1.6f*std::sin(.11f*n);
-        guard.process(l,r);
+        guard->process(l,r);
         maxPeak=std::max(maxPeak,std::max(std::fabs(l),std::fabs(r)));
         check(std::isfinite(l)&&std::isfinite(r),"guard output finite");
     }
@@ -96,13 +97,13 @@ int main(){
     s.peakGuard=false;s.peakGuard4x=false;s.spectral=true;s.bands=3;s.crossover=1;
     s.spectralAttackDb=5;s.spectralTonalDb=-4;s.roomAmount=.5f;
     s.band[0].attackDb=5;s.band[1].sustainDb=12;s.band[2].bodyDb=-7;
-    Engine all;all.prepare(SR,128);all.configure(s,true);
-    check(all.latencySamples()==640,"FIR+STFT PDC");
+    auto all=std::make_unique<Engine>();all->prepare(SR,128);all->configure(s,true);
+    check(all->latencySamples()==640,"FIR+STFT PDC");
     auto t1=std::chrono::high_resolution_clock::now();
     double outputEnergy=0;
     for(int n=0;n<SR*2;++n){
         float l=.15f*std::sin(.023f*n),r=.14f*std::sin(.37f*n);
-        all.process(l,r);
+        all->process(l,r);
         check(std::isfinite(l)&&std::isfinite(r),"full-feature finite output");
         outputEnergy+=double(l)*l+double(r)*r;
     }
@@ -117,13 +118,13 @@ int main(){
     parallel.spectralTonalDb=-8.f;
     parallel.mix=0.f;
     parallel.band[1].attackDb=17.f;
-    Engine wetZero;wetZero.prepare(SR,128);wetZero.configure(parallel,true);
+    auto wetZero=std::make_unique<Engine>();wetZero->prepare(SR,128);wetZero->configure(parallel,true);
     std::array<float,10000> dryReference {};
     float spectralMixError=0.f;
     for(int n=0;n<10000;++n){
         const float x=.23f*std::sin(.127f*n)+.1f*std::sin(.43f*n);
         dryReference[(size_t)n]=x;
-        float l=x,r=x;wetZero.process(l,r);
+        float l=x,r=x;wetZero->process(l,r);
         if(n>2048)spectralMixError=std::max(spectralMixError,
             std::fabs(l-dryReference[(size_t)(n-512)]));
     }
@@ -132,11 +133,11 @@ int main(){
     // Delta Listen should reveal ONLY spectral processing when envelope gain is zero.
     parallel.mix=1.f;parallel.delta=true;
     parallel.band[1].attackDb=0.f;
-    Engine delta;delta.prepare(SR,128);delta.configure(parallel,true);
+    auto delta=std::make_unique<Engine>();delta->prepare(SR,128);delta->configure(parallel,true);
     double deltaPower=0.f;
     for(int n=0;n<12000;++n){
         float l=.17f*std::sin(.21f*n),r=.17f*std::sin(.21f*n);
-        delta.process(l,r);
+        delta->process(l,r);
         if(n>2048)deltaPower+=l*l;
     }
     std::cout<<"Spectral delta energy="<<deltaPower<<"\n";
