@@ -368,9 +368,9 @@ void TdpAudioProcessorEditor::paint(juce::Graphics& g) {
         // Selector descriptions are visible inside their dropdowns.
         // Avoid painting dark captions across the navy section header.
         drawPanel(g,{65,451,1490,232},"FREQUENCY FOCUS / LIVE SUSTAIN TRACKING");
-        text(g,"LOW BAND",90,466,433,21,13,juce::Colour::fromRGB(205,219,230),juce::Justification::centredLeft);
-        text(g,"MID / FULL BAND",585,466,430,21,13,juce::Colour::fromRGB(205,219,230),juce::Justification::centredLeft);
-        text(g,"HIGH BAND",1080,466,433,21,13,juce::Colour::fromRGB(205,219,230),juce::Justification::centredLeft);
+        text(g,"LOW BAND",90,497,433,16,12,ink,juce::Justification::centredLeft);
+        text(g,"MID / FULL BAND",585,497,430,16,12,ink,juce::Justification::centredLeft);
+        text(g,"HIGH BAND",1080,497,433,16,12,ink,juce::Justification::centredLeft);
         drawPanel(g,{65,695,1490,207},"LIVE ENVELOPE DISPLAY / SPECTRAL & MID-SIDE ENGINE");
         drawScope(g,{91.f,738.f,680.f,141.f});
         // Bottom panel title already identifies spectral and mid/side controls.
