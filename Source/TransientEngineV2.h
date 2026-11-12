@@ -223,7 +223,8 @@ public:
         for(auto& x:dryDelay)x.fill(0.f);
         bandPos=0;wetSlew=1.f;inGain=outGain=1.f;
         rmsDry=rmsWet=0.f;autoGainDb=0.f;autoCounter=0;
-        activity.fill(0.f);fir.reset();spectral.reset();guard.reset();
+        activity.fill(0.f);channelGain={{{1.f,1.f},{1.f,1.f},{1.f,1.f}}};
+        shapeForScope={};fir.reset();spectral.reset();guard.reset();
     }
     void configure(Settings s,bool force=false) noexcept {
         s.bands=std::clamp(s.bands,1,3);
@@ -254,8 +255,8 @@ public:
         }
         if(force||s.lowHz!=settings.lowHz||s.highHz!=settings.highHz) {
             for(int ch=0;ch<2;++ch)for(int stage=0;stage<2;++stage){
-                iir[(size_t)ch][0][(size_t)stage].lowPass(s.lowHz,.70710678f,fs);
-                iir[(size_t)ch][1][(size_t)stage].lowPass(s.highHz,.70710678f,fs);
+                iir[(size_t)ch][0][(size_t)stage].lowpass(s.lowHz,fs);
+                iir[(size_t)ch][1][(size_t)stage].lowpass(s.highHz,fs);
             }
             fir.setFrequencies(s.lowHz,s.highHz);
         }
