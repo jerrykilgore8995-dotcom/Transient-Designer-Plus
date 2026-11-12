@@ -193,7 +193,9 @@ void TdpAudioProcessorEditor::knob(const juce::String& id,const juce::String& la
     const auto param=id.endsWith("atms")||id.endsWith("btms")||id.endsWith("hold")||
         id.endsWith("decay")||id=="rearm"||id=="groupwindow"||id=="smooth"||
         id=="roomearly"||id=="roombloom";
-    const auto isDb=id.endsWith("atk")||id.endsWith("body")||id.endsWith("sus")||
+    const auto isMsTrim=id=="matk"||id=="satk"||id=="msus"||id=="ssus";
+    const auto isDb=(!isMsTrim && (id.endsWith("atk")||id.endsWith("body")||
+                    id.endsWith("sus"))) ||
                     id=="input"||id=="output"||id=="ceiling"||id=="floor"||
                     id=="sattack"||id=="stonal";
     if(param)s->setTextValueSuffix(" ms");
@@ -363,19 +365,20 @@ void TdpAudioProcessorEditor::paint(juce::Graphics& g) {
              11,juce::Colour::fromRGB(198,218,231),juce::Justification::centredRight);
     } else {
         drawPanel(g,{65,202,1490,238},"ADAPTIVE DETECTION / ROOM ENVELOPE");
-        text(g,"HIT GROUPING",100,225,200,18,11,ink,juce::Justification::centredLeft);
-        text(g,"TRANSIENT LOOKAHEAD",321,225,200,18,11,ink,juce::Justification::centredLeft);
-        text(g,"CROSSOVER",520,225,200,18,11,ink,juce::Justification::centredLeft);
+        // Selector descriptions are visible inside their dropdowns.
+        // Avoid painting dark captions across the navy section header.
         drawPanel(g,{65,451,1490,232},"FREQUENCY FOCUS / LIVE SUSTAIN TRACKING");
-        text(g,"LOW BAND",90,490,433,18,15,ink,juce::Justification::centredLeft);
-        text(g,"MID / FULL BAND",585,490,430,18,15,ink,juce::Justification::centredLeft);
-        text(g,"HIGH BAND",1080,490,433,18,15,ink,juce::Justification::centredLeft);
+        text(g,"LOW BAND",90,466,433,21,13,juce::Colour::fromRGB(205,219,230),juce::Justification::centredLeft);
+        text(g,"MID / FULL BAND",585,466,430,21,13,juce::Colour::fromRGB(205,219,230),juce::Justification::centredLeft);
+        text(g,"HIGH BAND",1080,466,433,21,13,juce::Colour::fromRGB(205,219,230),juce::Justification::centredLeft);
         drawPanel(g,{65,695,1490,207},"LIVE ENVELOPE DISPLAY / SPECTRAL & MID-SIDE ENGINE");
         drawScope(g,{91.f,738.f,680.f,141.f});
-        text(g,"SPECTRAL / M-S TRIMS",825,729,695,18,12,ink,juce::Justification::centredLeft);
+        // Bottom panel title already identifies spectral and mid/side controls.
     }
     for(size_t i=0;i<labels.size();++i){
-        if(advancedPage ? i<mainLabelCount : i>=mainLabelCount)continue;
+        // Global input/output/mix labels remain visible on both pages.
+        if(advancedPage ? (i<mainLabelCount && labels[i].y>=185)
+                        : i>=mainLabelCount)continue;
         const auto& lab=labels[i];
         text(g,lab.text,lab.cx-lab.width/2,lab.y,lab.width,20,12.3f,
              lab.y<185?juce::Colour::fromRGB(211,225,237):ink);
