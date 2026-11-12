@@ -18,7 +18,9 @@ jobs:
         run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
       - name: Build clean DSP regression tests
         run: cmake --build build --config Release --target TdpDspTests --parallel 4
-      - name: Run 44.1 kHz signal-path checks
+      - name: Build V2 DSP tests
+        run: cmake --build build --config Release --target TdpV2Tests --parallel 4
+      - name: Run V1 and V2 DSP verification at 44.1 kHz
         run: ctest --test-dir build -C Release --output-on-failure
       - name: Compile Windows VST3
         run: cmake --build build --config Release --target TransientDesignerPlus_VST3 --parallel 4
@@ -27,10 +29,10 @@ jobs:
         run: |
           $p = Get-ChildItem -Path build -Recurse -Directory -Filter "Transient Designer Plus.vst3" | Select-Object -First 1
           if (-not $p) { throw "VST3 bundle not found" }
-          Compress-Archive -LiteralPath $p.FullName -DestinationPath "Transient_Designer_Plus_v1.0_Windows_x64_VST3.zip" -Force
+          Compress-Archive -LiteralPath $p.FullName -DestinationPath "Transient_Designer_Plus_v2.0_Windows_x64_VST3.zip" -Force
       - name: Publish download artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Transient-Designer-Plus-v1.0-Windows-x64-VST3
+          name: Transient-Designer-Plus-v2.0-Windows-x64-VST3
           path: Transient_Designer_Plus_v1.0_Windows_x64_VST3.zip
           if-no-files-found: error
