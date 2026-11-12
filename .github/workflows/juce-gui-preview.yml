@@ -1,0 +1,36 @@
+name: Capture Actual JUCE GUI
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/EditorPreview.cpp'
+      - 'Source/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/juce-gui-preview.yml'
+jobs:
+  preview:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure JUCE 8 / Visual Studio
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+      - name: Compile the exact JUCE editor
+        run: cmake --build build --config Release --target TdpEditorPreview --parallel 4
+      - name: Render editor offscreen to a real JUCE PNG
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem build -Recurse -File -Filter 'TdpEditorPreview.exe' |
+            Where-Object { $_.FullName -match 'Release' } | Select-Object -First 1
+          if (-not $exe) { throw "JUCE preview executable was not produced" }
+          & $exe.FullName
+          if ($LASTEXITCODE -ne 0) { throw "Editor capture failed: $LASTEXITCODE" }
+          $preview = "Transient_Designer_Plus_Actual_JUCE_GUI.png"
+          if (-not (Test-Path $preview)) { throw "Screenshot PNG is missing" }
+      - name: Upload exact JUCE editor screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: Transient-Designer-Plus-Actual-JUCE-GUI
+          path: Transient_Designer_Plus_Actual_JUCE_GUI.png
+          if-no-files-found: error
