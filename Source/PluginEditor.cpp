@@ -151,7 +151,7 @@ TdpAudioProcessorEditor::TdpAudioProcessorEditor(TdpAudioProcessor& p):
     const char* topIDs[]={"rearm","groupwindow","floor","smooth","room",
         "roomearly","roombloom","roomdamp","roomwidth"};
     const char* topLabels[]={"RETRIGGER","GROUP WINDOW","NOISE FLOOR","GAIN SLEW",
-        "ROOM AMOUNT","EARLY REFLECT","BLOOM TIME","ROOM DAMP","ROOM WIDTH"};
+        "ROOM +/-","EARLY REFLECT","BLOOM TIME","ROOM DAMP","ROOM WIDTH"};
     for(int i=0;i<9;++i)knob(topIDs[i],topLabels[i],topX[i],365,69);
     // Detector-only band focus: no forced audio split or extra phase change.
     const int focusStart[3]={133,628,1123};
@@ -302,7 +302,10 @@ void TdpAudioProcessorEditor::drawScope(juce::Graphics& g,juce::Rectangle<float>
     drawTrace(processor.scopeOutput,juce::Colour::fromRGB(61,184,255),r.getCentreY(),r.getHeight()*.38f);
     drawTrace(processor.scopeAttack,juce::Colour::fromRGB(255,193,91),r.getBottom()-10,r.getHeight()*.20f);
     drawTrace(processor.scopeSustain,juce::Colour::fromRGB(120,225,172),r.getBottom()-10,r.getHeight()*.20f);
-    text(g,"IN   OUT   ATTACK   SUSTAIN",(int)r.getX()+10,(int)r.getY()+4,300,15,10,
+    drawTrace(processor.scopeBody,juce::Colour::fromRGB(196,147,255),r.getBottom()-10,r.getHeight()*.20f);
+    drawTrace(processor.scopeRoom,juce::Colour::fromRGB(255,115,122),r.getBottom()-10,r.getHeight()*.20f);
+    drawTrace(processor.scopeGain,juce::Colour::fromRGB(247,243,215),r.getBottom()-12,r.getHeight()*.19f);
+    text(g,"IN   OUT   ATTACK   BODY   SUSTAIN   ROOM   GAIN",(int)r.getX()+10,(int)r.getY()+4,560,15,10,
          juce::Colour::fromRGB(162,188,206),juce::Justification::centredLeft);
 }
 
