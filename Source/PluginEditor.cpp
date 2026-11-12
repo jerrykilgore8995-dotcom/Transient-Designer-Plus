@@ -230,6 +230,11 @@ void TdpAudioProcessorEditor::choice(const juce::String& id,const juce::StringAr
 void TdpAudioProcessorEditor::resized() {
     for(const auto& c:positions)c.component->setBounds(c.area);
 }
+void TdpAudioProcessorEditor::setAdvancedPageForPreview(bool advanced){
+    advancedPage=advanced;
+    advancedButton.setToggleState(advanced,juce::dontSendNotification);
+    updatePage();repaint();
+}
 void TdpAudioProcessorEditor::updatePage() {
     for(size_t i=0;i<positions.size();++i) {
         const bool header=(i<mainControlCount&&positions[i].area.getY()<190);
