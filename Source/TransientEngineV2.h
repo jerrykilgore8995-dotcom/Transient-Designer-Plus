@@ -294,6 +294,9 @@ public:
         // No FFT, allocation or parameter notifications from this method.
         if(force||s.inputDb!=previousInputDb){targetInput=dbGain(s.inputDb);previousInputDb=s.inputDb;}
         if(force||s.outputDb!=previousOutputDb){targetOutput=dbGain(s.outputDb);previousOutputDb=s.outputDb;}
+        // Fresh instances start at their saved Mix/trim settings. Do not
+        // accidentally crossfade in wet audio when loading a 0%-Mix preset.
+        if(force){wetSlew=s.mix;inGain=targetInput;outGain=targetOutput;}
         if(force||s.noiseGateDb!=previousFloorDb){noiseGateAmp=dbGain(s.noiseGateDb);previousFloorDb=s.noiseGateDb;}
         if(force||s.ceilingDb!=previousCeilingDb){guardCeiling=dbGain(s.ceilingDb);previousCeilingDb=s.ceilingDb;}
         if(force||s.roomBloomMs!=previousRoomBloom||s.roomDamp!=previousRoomDamp){
