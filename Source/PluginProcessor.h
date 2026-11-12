@@ -36,6 +36,9 @@ public:
     std::array<std::atomic<float>,ScopeSize> scopeOutput {};
     std::array<std::atomic<float>,ScopeSize> scopeAttack {};
     std::array<std::atomic<float>,ScopeSize> scopeSustain {};
+    std::array<std::atomic<float>,ScopeSize> scopeBody {};
+    std::array<std::atomic<float>,ScopeSize> scopeRoom {};
+    std::array<std::atomic<float>,ScopeSize> scopeGain {};
     std::atomic<int> scopeWrite{0};
     std::atomic<int> pendingHostLatency{0};
     void applyFactoryPreset(int index);
