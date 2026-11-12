@@ -39,3 +39,14 @@ else()
 endif()
 enable_testing()
 add_test(NAME TdpDspTests COMMAND TdpDspTests)
+
+# Exact JUCE editor capture (not a concept illustration).
+juce_add_console_app(TdpEditorPreview PRODUCT_NAME "TDP JUCE GUI Capture")
+target_sources(TdpEditorPreview PRIVATE
+  tests/EditorPreview.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
+target_include_directories(TdpEditorPreview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(TdpEditorPreview PRIVATE
+  JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
+target_link_libraries(TdpEditorPreview PRIVATE
+  juce::juce_audio_utils juce::juce_dsp
+  juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
