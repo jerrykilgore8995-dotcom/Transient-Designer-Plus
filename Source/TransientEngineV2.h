@@ -234,7 +234,7 @@ public:
         bandPos=0;wetSlew=1.f;inGain=outGain=1.f;
         rmsDry=rmsWet=0.f;autoGainDb=0.f;autoCounter=0;
         activity.fill(0.f);channelGain={{{1.f,1.f},{1.f,1.f},{1.f,1.f}}};
-        shapeForScope={};fir.reset();spectral.reset();guard.reset();
+        shapeForScope={};scopeTargetDb=0.f;fir.reset();spectral.reset();guard.reset();
     }
     void configure(Settings s,bool force=false) noexcept {
         s.bands=std::clamp(s.bands,1,3);
@@ -307,6 +307,7 @@ public:
     int latencySamples() const noexcept {return latency;}
     const std::array<float,3>& bandActivity() const noexcept {return activity;}
     Shape liveShape() const noexcept {return shapeForScope;}
+    float liveGainDb() const noexcept {return scopeTargetDb;}
     void process(float& left,float& right) noexcept {
         inGain+=(targetInput-inGain)*inputSlew;
         outGain+=(targetOutput-outGain)*inputSlew;
@@ -369,6 +370,7 @@ public:
                     p.attackDb*sh.attack*amtAttack+p.bodyDb*sh.body+
                     p.sustainDb*sh.sustain*amtSustain+
                     settings.roomAmount*12.f*sh.room*(ch==1?settings.roomWidth:1.f):0.f);
+                if(b==1&&ch==0)scopeTargetDb=db;
                 const float target=fastGain(clampf(db,-36.f,24.f));
                 auto& smoothed=channelGain[(size_t)b][(size_t)ch];
                 smoothed+=(target-smoothed)*gainSlew;
@@ -467,6 +469,7 @@ private:
     std::array<float,3> decay {};
     std::array<float,3> activity {};
     Shape shapeForScope;
+    float scopeTargetDb=0.f;
     std::array<std::array<Detector,3>,3> detectors {};
     std::array<std::array<FocusFilter,2>,3> focus {};
     std::array<std::array<std::array<tdp::Biquad,2>,2>,2> iir {};
