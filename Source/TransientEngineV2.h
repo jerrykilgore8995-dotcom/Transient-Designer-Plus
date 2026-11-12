@@ -234,6 +234,8 @@ public:
         bandPos=0;wetSlew=1.f;inGain=outGain=1.f;
         rmsDry=rmsWet=0.f;autoGainDb=0.f;autoCounter=0;
         activity.fill(0.f);channelGain={{{1.f,1.f},{1.f,1.f},{1.f,1.f}}};
+        for(auto& b:roomLP)b={0.f,0.f};
+        for(auto& b:roomGain)b={0.f,0.f};
         shapeForScope={};scopeTargetDb=0.f;fir.reset();spectral.reset();guard.reset();
         for(auto& ch:spectralDryDelay)ch.fill(0.f);
         spectralDryHead=0;
@@ -297,6 +299,8 @@ public:
         if(force||s.roomBloomMs!=previousRoomBloom||s.roomDamp!=previousRoomDamp){
             roomRiseMul=std::exp(-1.f/(fs*std::max(4.f,s.roomBloomMs*.17f)*.001f));
             roomDecayMul=std::exp(-1.f/(fs*std::max(25.f,s.roomBloomMs*(1.f+3.f*s.roomDamp))*.001f));
+            const float roomCut=16000.f*std::pow(.16f,clampf(s.roomDamp,0.f,1.f));
+            roomLPAlpha=1.f-std::exp(-2.f*kPi*roomCut/fs);
             previousRoomBloom=s.roomBloomMs;previousRoomDamp=s.roomDamp;
         }
         lookSamples=(int)std::lround(fs*s.lookaheadMs*.001f);
@@ -328,6 +332,7 @@ public:
         const auto currentPos=bandPos;
         float wet[2]={0.f,0.f};
         const bool anySolo=settings.band[0].solo||settings.band[1].solo||settings.band[2].solo;
+        shapeForScope={};scopeTargetDb=0.f;
         for(int b=0;b<3;++b) {
             const bool active=(settings.bands==1?b==1:(settings.bands==2?b!=1:true));
             if(!active) {activity[(size_t)b]=0.f;continue;}
@@ -357,7 +362,10 @@ public:
                     }
                 }
             }
-            if(b==1)shapeForScope=shapes[0];
+            shapeForScope.attack=std::max(shapeForScope.attack,shapes[0].attack);
+            shapeForScope.body=std::max(shapeForScope.body,shapes[0].body);
+            shapeForScope.sustain=std::max(shapeForScope.sustain,shapes[0].sustain);
+            shapeForScope.room=std::max(shapeForScope.room,shapes[0].room);
             for(int ch=0;ch<2;++ch) {
                 bandDelay[(size_t)b][(size_t)ch][(size_t)currentPos]=raw[ch];
                 float audio=lookSamples>0?bandDelay[(size_t)b][(size_t)ch]
@@ -368,15 +376,26 @@ public:
                     amtAttack=ch==0?settings.midAttack:settings.sideAttack;
                     amtSustain=ch==0?settings.midSustain:settings.sideSustain;
                 }
-                const float db=(p.enabled?
+                const float baseDb=p.enabled?
                     p.attackDb*sh.attack*amtAttack+p.bodyDb*sh.body+
-                    p.sustainDb*sh.sustain*amtSustain+
-                    settings.roomAmount*12.f*sh.room*(ch==1?settings.roomWidth:1.f):0.f);
-                if(b==1&&ch==0)scopeTargetDb=db;
-                const float target=fastGain(clampf(db,-36.f,24.f));
-                auto& smoothed=channelGain[(size_t)b][(size_t)ch];
-                smoothed+=(target-smoothed)*gainSlew;
-                if(!anySolo||p.solo)wet[ch]+=audio*smoothed;
+                    p.sustainDb*sh.sustain*amtSustain:0.f;
+                const float roomDb=p.enabled?
+                    settings.roomAmount*12.f*sh.room*
+                    (settings.stereo==2&&ch==1?settings.roomWidth:1.f):0.f;
+                const float db=clampf(baseDb+roomDb,-36.f,24.f);
+                scopeTargetDb=std::fabs(db)>std::fabs(scopeTargetDb)?db:scopeTargetDb;
+                const float baseTarget=fastGain(clampf(baseDb,-36.f,24.f));
+                const float roomTarget=fastGain(db)-baseTarget;
+                auto& baseGain=channelGain[(size_t)b][(size_t)ch];
+                auto& lateGain=roomGain[(size_t)b][(size_t)ch];
+                baseGain+=(baseTarget-baseGain)*gainSlew;
+                lateGain+=(roomTarget-lateGain)*gainSlew;
+                // Late-room gain has its OWN low-pass, so DAMP adjusts actual
+                // HF energy of the room component rather than only release time.
+                auto& low=roomLP[(size_t)b][(size_t)ch];
+                low+=roomLPAlpha*(audio-low);
+                if(!anySolo||p.solo)
+                    wet[ch]+=audio*baseGain+low*lateGain;
                 activity[(size_t)b]=std::max(activity[(size_t)b]*.999f,std::fabs(db));
             }
         }
@@ -468,6 +487,7 @@ private:
     float inputSlew=.001f,gainSlew=.01f,autoRms=.0001f,autoSmooth=.0001f;
     float guardRelease=.0001f,hpCoef=.01f;
     float noiseGateAmp=.0001f,guardCeiling=.944f,roomRiseMul=.99f,roomDecayMul=.999f;
+    float roomLPAlpha=.5f;
     float previousFloorDb=999.f,previousCeilingDb=999.f;
     float previousRoomBloom=-1.f,previousRoomDamp=-1.f;
     float previousInputDb=999.f,previousOutputDb=999.f;
@@ -489,6 +509,8 @@ private:
     std::array<std::array<float,1024>,2> spectralDryDelay {};
     int spectralDryHead=0;
     std::array<std::array<float,2>,3> channelGain {{{1.f,1.f},{1.f,1.f},{1.f,1.f}}};
+    std::array<std::array<float,2>,3> roomGain {};
+    std::array<std::array<float,2>,3> roomLP {};
     LinearPhaseSplit fir;
     SpectralSeparation spectral;
     PeakGuard guard;
