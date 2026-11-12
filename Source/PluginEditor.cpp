@@ -232,7 +232,7 @@ void TdpAudioProcessorEditor::paint(juce::Graphics& g) {
     for(float xx: {23.f,1597.f})for(float yy:{53.f,462.f,881.f})drawScrew(g,xx,yy);
     g.setColour(juce::Colour::fromRGB(22,35,46));
     g.fillRoundedRectangle(62.f,31.f,1493.f,144.f,5.f);
-    g.setColour(juce::Colour::fromRGB(90,132,166));g.drawRoundedRectangle(62.f,31.f,1493.f,144.f,1.f);
+    g.setColour(juce::Colour::fromRGB(90,132,166));g.drawRoundedRectangle(juce::Rectangle<float>(62.f,31.f,1493.f,144.f),5.f,1.f);
     text(g,"TRANSIENT",86,37,340,48,34,juce::Colours::white,juce::Justification::centredLeft);
     text(g,"DESIGNER  +",86,78,295,31,22,juce::Colour::fromRGB(83,183,250),juce::Justification::centredLeft);
     text(g,"3-STAGE ENVELOPE WORKSTATION",86,131,360,22,12,juce::Colour::fromRGB(174,187,197),juce::Justification::centredLeft);
