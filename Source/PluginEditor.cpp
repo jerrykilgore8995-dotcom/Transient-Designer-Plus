@@ -116,14 +116,14 @@ TdpAudioProcessorEditor::TdpAudioProcessorEditor(TdpAudioProcessor& p):
         switchButton(pre+"on","IN",x+23,640,88);
         switchButton(pre+"solo","SOLO",x+124,640,105);
     }
-    knob("sense","SENSITIVITY",135,787,77);
-    knob("peak","PEAK / RMS",288,787,77);
-    knob("schpf","SC HPF",441,787,77);
-    knob("soft","EDGE SHAPE",594,787,77);
-    knob("xlow","LOW XOVER",772,787,77);
-    knob("xhigh","HIGH XOVER",922,787,77);
-    knob("link","STEREO LINK",1072,787,77);
-    knob("ceiling","CEILING",1222,787,77);
+    knob("sense","SENSITIVITY",135,823,77);
+    knob("peak","PEAK / RMS",288,823,77);
+    knob("schpf","SC HPF",441,823,77);
+    knob("soft","EDGE SHAPE",594,823,77);
+    knob("xlow","LOW XOVER",772,823,77);
+    knob("xhigh","HIGH XOVER",922,823,77);
+    knob("link","STEREO LINK",1072,823,77);
+    knob("ceiling","CEILING",1222,823,77);
     choice("lookahead",{"NO LATENCY","1 ms","3 ms"},1374,797,169);
     switchButton("delta","DELTA LISTEN",436,139,151);
     switchButton("auto","AUTO LEVEL",600,139,143);
@@ -244,7 +244,7 @@ void TdpAudioProcessorEditor::paint(juce::Graphics& g) {
         int x=65+b*495;
         drawPanel(g,{(float)x,198,470,509},titles[b]);
         g.setColour(juce::Colour::fromRGB(67,76,85));
-        g.drawHorizontalLine(457,x+17,x+453);
+        g.drawHorizontalLine(438,x+17,x+453);
         g.setColour(juce::Colour::fromRGB(64,73,83));
         g.drawHorizontalLine(626,x+17,x+453);
         float act=processor.bandActivity[(size_t)b].load(std::memory_order_relaxed);
@@ -265,6 +265,6 @@ void TdpAudioProcessorEditor::paint(juce::Graphics& g) {
              lab.y>720?ink:juce::Colour::fromRGB(31,41,50));
     text(g,"CLEAN ENGINE  •  NO ADDED HARMONICS  •  OPTIONAL PEAK GUARD",735,879,410,16,
          10,juce::Colour::fromRGB(24,51,76));
-    drawMeter(g,{938,137,113,25},processor.inputPeak.load()*12.f,"INPUT PEAK");
-    drawMeter(g,{1062,137,113,25},processor.outputPeak.load()*12.f,"OUTPUT PEAK");
+    drawMeter(g,{938,149,113,22},processor.inputPeak.load()*12.f,"INPUT PEAK");
+    drawMeter(g,{1062,149,113,22},processor.outputPeak.load()*12.f,"OUTPUT PEAK");
 }
