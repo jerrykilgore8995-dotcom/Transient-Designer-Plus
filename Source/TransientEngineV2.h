@@ -137,7 +137,7 @@ struct Detector {
             const float shape=(1.f-b.follow)*tail+b.follow*tracked;
             sustain=(since/(since+8.f))*shape*gate*eventStrength;
         }
-        if(s.roomAmount>0.f && age>s.roomEarlyMs){
+        if(std::fabs(s.roomAmount)>.0001f && age>s.roomEarlyMs){
             // Stateful exponential equivalent; no exp() inside the sample loop.
             roomRise=1.f-(1.f-roomRise)*roomRiseMul;
             roomTail*=roomDecayMul;
@@ -247,7 +247,7 @@ public:
         s.lookaheadMs=clampf(s.lookaheadMs,0.f,3.f);
         s.guardLookaheadMs=clampf(s.guardLookaheadMs,0.f,3.f);
         s.smoothingMs=clampf(s.smoothingMs,.3f,15.f);
-        s.roomAmount=clampf(s.roomAmount,0.f,2.f);
+        s.roomAmount=clampf(s.roomAmount,-2.f,2.f);
         s.ceilingDb=clampf(s.ceilingDb,-9.f,0.f);
         s.rearmMs=clampf(s.rearmMs,1.f,50.f);
         s.groupWindowMs=clampf(s.groupWindowMs,5.f,200.f);
@@ -388,6 +388,12 @@ public:
             const float dryL=dry[0]+dry[1],dryR=dry[0]-dry[1];
             wet[0]=wetL;wet[1]=wetR;
             dry[0]=dryL;dry[1]=dryR;
+        } else if(std::fabs(settings.roomAmount)>.0001f && settings.roomWidth!=1.f) {
+            // Width is applied only to active late-room envelope, not dry/direct sound.
+            const float width=clampf(1.f+(settings.roomWidth-1.f)*shapeForScope.room,0.f,2.5f);
+            const float m=(wet[0]+wet[1])*.5f;
+            const float side=(wet[0]-wet[1])*.5f*width;
+            wet[0]=m+side;wet[1]=m-side;
         }
         float out[2];
         for(int ch=0;ch<2;++ch)
