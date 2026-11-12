@@ -90,7 +90,7 @@ TdpAudioProcessorEditor::TdpAudioProcessorEditor(TdpAudioProcessor& p):
     setSize(1620,930);
     presets.setColour(juce::ComboBox::textColourId,juce::Colour::fromRGB(127,206,255));
     presets.setTextWhenNothingSelected("MANUAL / CUSTOM");
-    for(int i=0;i<8;++i)presets.addItem(TdpAudioProcessor::presetNames()[(size_t)i],i+1);
+    for(int i=0;i<12;++i)presets.addItem(TdpAudioProcessor::presetNames()[(size_t)i],i+1);
     addAndMakeVisible(presets);
     presets.onChange=[this]{if(presets.getSelectedId()>0)processor.applyFactoryPreset(presets.getSelectedId()-1);};
     positions.push_back({&presets,{420,96,252,30}});
@@ -129,7 +129,49 @@ TdpAudioProcessorEditor::TdpAudioProcessorEditor(TdpAudioProcessor& p):
     switchButton("delta","DELTA LISTEN",436,139,151);
     switchButton("auto","AUTO LEVEL",600,139,143);
     switchButton("guard","PEAK GUARD",764,139,160);
+    mainControlCount=positions.size();
+    mainLabelCount=labels.size();
+    // Hardware-style page selector: advanced controls stay off the main faceplate.
+    advancedButton.setButtonText("ADVANCED  /  V2 ENGINE");
+    advancedButton.setColour(juce::TextButton::buttonColourId,juce::Colour::fromRGB(35,49,63));
+    advancedButton.setColour(juce::TextButton::buttonOnColourId,juce::Colour::fromRGB(39,101,158));
+    advancedButton.setColour(juce::TextButton::textColourOffId,juce::Colour::fromRGB(211,226,239));
+    advancedButton.setColour(juce::TextButton::textColourOnId,juce::Colours::white);
+    advancedButton.setClickingTogglesState(true);
+    advancedButton.onClick=[this]{advancedPage=advancedButton.getToggleState();updatePage();repaint();};
+    addAndMakeVisible(advancedButton);
+    advancedButton.setBounds(1269,174,281,23);
+    // Advanced page / detector & grouped-hit setup.
+    choice("grouping",{"SEPARATE","ADAPTIVE GROUP","GROUP NEAR HITS"},105,253,196);
+    choice("prelook",{"ZERO LATENCY","0.5 ms","1.5 ms","3 ms"},322,253,170);
+    choice("xquality",{"IIR ZERO LATENCY","FIR LINEAR PHASE"},520,253,205);
+    switchButton("spectral","STFT TONAL",756,255,158);
+    switchButton("guard4x","4x PEAK EST.",948,255,157);
+    const int topX[9]={140,305,470,635,800,965,1130,1295,1460};
+    const char* topIDs[]={"rearm","groupwindow","floor","smooth","room",
+        "roomearly","roombloom","roomdamp","roomwidth"};
+    const char* topLabels[]={"RETRIGGER","GROUP WINDOW","NOISE FLOOR","GAIN SLEW",
+        "ROOM AMOUNT","EARLY REFLECT","BLOOM TIME","ROOM DAMP","ROOM WIDTH"};
+    for(int i=0;i<9;++i)knob(topIDs[i],topLabels[i],topX[i],365,69);
+    // Detector-only band focus: no forced audio split or extra phase change.
+    const int focusStart[3]={133,628,1123};
+    const char* prefixes[]={"lo","mid","hi"};
+    for(int b=0;b<3;++b) {
+        const juce::String p=prefixes[b];
+        const int x=focusStart[b];
+        knob(p+"follow","LIVE FOLLOW",x+0,574,70);
+        knob(p+"freq","FOCUS HZ",x+118,574,70);
+        knob(p+"fq","FOCUS Q",x+236,574,70);
+        knob(p+"focus","FOCUS MIX",x+354,574,70);
+    }
+    // Independent spectral/transient/tonal gain and mid-side control.
+    const int bottomX[7]={865,965,1065,1165,1265,1365,1465};
+    const char* bottomID[]={"sattack","stonal","ssense","matk","satk","msus","ssus"};
+    const char* bottomLabel[]={"SPEC ATTACK","SPEC TONAL","FLUX SENSE",
+        "MID ATTACK","SIDE ATTACK","MID SUSTAIN","SIDE SUSTAIN"};
+    for(int i=0;i<7;++i)knob(bottomID[i],bottomLabel[i],bottomX[i],816,66);
     resized();
+    updatePage();
     startTimerHz(25);
 }
 TdpAudioProcessorEditor::~TdpAudioProcessorEditor() {
@@ -148,17 +190,21 @@ void TdpAudioProcessorEditor::knob(const juce::String& id,const juce::String& la
     s->setColour(juce::Slider::textBoxBackgroundColourId,juce::Colour::fromRGB(176,182,186));
     s->setColour(juce::Slider::textBoxOutlineColourId,juce::Colour::fromRGB(78,86,93));
     s->setPopupDisplayEnabled(true,true,this);
-    const auto param=id.endsWith("atms")||id.endsWith("btms")||id.endsWith("hold")||id.endsWith("decay");
+    const auto param=id.endsWith("atms")||id.endsWith("btms")||id.endsWith("hold")||
+        id.endsWith("decay")||id=="rearm"||id=="groupwindow"||id=="smooth"||
+        id=="roomearly"||id=="roombloom";
     const auto isDb=id.endsWith("atk")||id.endsWith("body")||id.endsWith("sus")||
-                    id=="input"||id=="output"||id=="ceiling";
+                    id=="input"||id=="output"||id=="ceiling"||id=="floor"||
+                    id=="sattack"||id=="stonal";
     if(param)s->setTextValueSuffix(" ms");
     else if(isDb)s->setTextValueSuffix(" dB");
-    else if(id=="xlow"||id=="xhigh"||id=="schpf")s->setTextValueSuffix(" Hz");
-    else if(id!="locurve"&&id!="midcurve"&&id!="hicurve")s->setTextValueSuffix(" %");
+    else if(id=="xlow"||id=="xhigh"||id=="schpf"||id.endsWith("freq"))s->setTextValueSuffix(" Hz");
+    else if(id.endsWith("curve")||id.endsWith("fq"))s->setTextValueSuffix("");
+    else s->setTextValueSuffix(" %");
     s->setName(label);
     addAndMakeVisible(*s);
     knobLinks.push_back(std::make_unique<SA>(processor.state,id,*s));
-    positions.push_back({s.get(),{cx-size/2,cy-size/2,size,112}});
+    positions.push_back({s.get(),{cx-size/2,cy-size/2,size,cy>730?108:112}});
     addLabel(label,cx,cy-size/2-22,109);
     knobs.push_back(std::move(s));
 }
@@ -183,6 +229,13 @@ void TdpAudioProcessorEditor::choice(const juce::String& id,const juce::StringAr
 }
 void TdpAudioProcessorEditor::resized() {
     for(const auto& c:positions)c.component->setBounds(c.area);
+}
+void TdpAudioProcessorEditor::updatePage() {
+    for(size_t i=0;i<positions.size();++i) {
+        const bool header=(i<mainControlCount&&positions[i].area.getY()<190);
+        positions[i].component->setVisible(header ||
+            (advancedPage?i>=mainControlCount:i<mainControlCount));
+    }
 }
 void TdpAudioProcessorEditor::drawScrew(juce::Graphics& g,float x,float y) const {
     g.setColour(juce::Colour::fromRGB(17,21,26));g.fillEllipse(x-11,y-11,22,22);
@@ -219,6 +272,40 @@ void TdpAudioProcessorEditor::drawMeter(juce::Graphics& g,juce::Rectangle<float>
          10,r.getY()<190?juce::Colour::fromRGB(198,218,232):ink,
          juce::Justification::centredLeft);
 }
+
+void TdpAudioProcessorEditor::drawScope(juce::Graphics& g,juce::Rectangle<float> r) const {
+    g.setColour(juce::Colour::fromRGB(15,24,31));
+    g.fillRoundedRectangle(r,4.f);
+    g.setColour(juce::Colour::fromRGB(76,98,116));
+    g.drawRoundedRectangle(r,4.f,1.f);
+    for(int y=1;y<4;++y){
+        const float yy=r.getY()+r.getHeight()*y/4;
+        g.setColour(juce::Colour::fromRGB(48,69,80));g.drawHorizontalLine((int)yy,r.getX()+5,r.getRight()-5);
+    }
+    for(int x=1;x<8;++x) {
+        const float xx=r.getX()+r.getWidth()*x/8;
+        g.setColour(juce::Colour::fromRGB(38,60,73));g.drawVerticalLine((int)xx,r.getY()+5,r.getBottom()-5);
+    }
+    const int head=processor.scopeWrite.load(std::memory_order_acquire);
+    auto drawTrace=[&](const auto& points,juce::Colour colour,float mid,float scale){
+        juce::Path p;
+        for(int j=0;j<TdpAudioProcessor::ScopeSize;++j){
+            const int index=(head+j)&(TdpAudioProcessor::ScopeSize-1);
+            const float v=points[(size_t)index].load(std::memory_order_relaxed);
+            const float x=r.getX()+r.getWidth()*j/(TdpAudioProcessor::ScopeSize-1);
+            const float y=juce::jlimit(r.getY()+4,r.getBottom()-4,mid-v*scale);
+            if(j==0)p.startNewSubPath(x,y);else p.lineTo(x,y);
+        }
+        g.setColour(colour);g.strokePath(p,juce::PathStrokeType(1.65f));
+    };
+    drawTrace(processor.scopeInput,juce::Colour::fromRGB(147,158,169),r.getCentreY(),r.getHeight()*.38f);
+    drawTrace(processor.scopeOutput,juce::Colour::fromRGB(61,184,255),r.getCentreY(),r.getHeight()*.38f);
+    drawTrace(processor.scopeAttack,juce::Colour::fromRGB(255,193,91),r.getBottom()-10,r.getHeight()*.20f);
+    drawTrace(processor.scopeSustain,juce::Colour::fromRGB(120,225,172),r.getBottom()-10,r.getHeight()*.20f);
+    text(g,"IN   OUT   ATTACK   SUSTAIN",(int)r.getX()+10,(int)r.getY()+4,300,15,10,
+         juce::Colour::fromRGB(162,188,206),juce::Justification::centredLeft);
+}
+
 void TdpAudioProcessorEditor::paint(juce::Graphics& g) {
     g.fillAll(midnight);
     auto face=juce::Rectangle<float>(40,14,1540,902);
@@ -244,30 +331,50 @@ void TdpAudioProcessorEditor::paint(juce::Graphics& g) {
     text(g,"FACTORY PATCH",420,70,252,20,12,juce::Colour::fromRGB(202,213,223));
     text(g,"PROCESSING",716,70,160,20,12,juce::Colour::fromRGB(202,213,223));
     text(g,"ROUTING",901,70,168,20,12,juce::Colour::fromRGB(202,213,223));
-    const char* titles[]={"LOW - THUMP","MID - BODY / FULL","HIGH - SNAP"};
-    for(int b=0;b<3;++b) {
-        int x=65+b*495;
-        drawPanel(g,{(float)x,198,470,509},titles[b]);
-        g.setColour(juce::Colour::fromRGB(67,76,85));
-        g.drawHorizontalLine(438,x+17,x+453);
-        g.setColour(juce::Colour::fromRGB(64,73,83));
-        g.drawHorizontalLine(626,x+17,x+453);
-        float act=processor.bandActivity[(size_t)b].load(std::memory_order_relaxed);
-        drawMeter(g,{(float)x+252,647,196,38},act,"ENVELOPE ACTION  /  dB");
-        // Highlights are informative, not misleading: unused bands are marked dormant.
-        int mode=(int)processor.state.getRawParameterValue("mode")->load();
-        bool active=mode==0?b==1:(mode==1?b!=1:true);
-        if(!active)text(g,"STANDBY",(int)x+348,205,104,29,11,
-            juce::Colour::fromRGB(170,185,195));
+    if(!advancedPage) {
+        const char* titles[]={"LOW - THUMP","MID - BODY / FULL","HIGH - SNAP"};
+        for(int b=0;b<3;++b) {
+            int x=65+b*495;
+            drawPanel(g,{(float)x,198,470,509},titles[b]);
+            g.setColour(juce::Colour::fromRGB(67,76,85));
+            g.drawHorizontalLine(438,x+17,x+453);
+            g.setColour(juce::Colour::fromRGB(64,73,83));
+            g.drawHorizontalLine(626,x+17,x+453);
+            float act=processor.bandActivity[(size_t)b].load(std::memory_order_relaxed);
+            drawMeter(g,{(float)x+252,647,196,38},act,"ENVELOPE ACTION  /  dB");
+            // Highlights are informative, not misleading: unused bands are marked dormant.
+            int mode=(int)processor.state.getRawParameterValue("mode")->load();
+            bool active=mode==0?b==1:(mode==1?b!=1:true);
+            if(!active)text(g,"STANDBY",(int)x+348,205,104,29,11,
+                juce::Colour::fromRGB(170,185,195));
+        }
+        drawPanel(g,{65,724,1490,179},"DETECTOR & GLOBAL CONTROL");
+        g.setColour(juce::Colour::fromRGB(60,71,79));g.drawVerticalLine(719,766,875);
+        g.drawVerticalLine(1157,766,875);
+        for(const auto& lab:labels)
+            text(g,lab.text,lab.cx-lab.width/2,lab.y,lab.width,20,12.3f,
+                 lab.y<185?juce::Colour::fromRGB(211,225,237):ink);
+        text(g,"CLEAN SIGNAL PATH  |  NO ADDED HARMONICS",1065,731,456,25,
+             11,juce::Colour::fromRGB(198,218,231),juce::Justification::centredRight);
+    } else {
+        drawPanel(g,{65,202,1490,238},"ADAPTIVE DETECTION / ROOM ENVELOPE");
+        text(g,"HIT GROUPING",100,225,200,18,11,ink,juce::Justification::centredLeft);
+        text(g,"TRANSIENT LOOKAHEAD",321,225,200,18,11,ink,juce::Justification::centredLeft);
+        text(g,"CROSSOVER",520,225,200,18,11,ink,juce::Justification::centredLeft);
+        drawPanel(g,{65,451,1490,232},"FREQUENCY FOCUS / LIVE SUSTAIN TRACKING");
+        text(g,"LOW BAND",90,490,433,18,15,ink,juce::Justification::centredLeft);
+        text(g,"MID / FULL BAND",585,490,430,18,15,ink,juce::Justification::centredLeft);
+        text(g,"HIGH BAND",1080,490,433,18,15,ink,juce::Justification::centredLeft);
+        drawPanel(g,{65,695,1490,207},"LIVE ENVELOPE DISPLAY / SPECTRAL & MID-SIDE ENGINE");
+        drawScope(g,{91.f,738.f,680.f,141.f});
+        text(g,"SPECTRAL / M-S TRIMS",825,729,695,18,12,ink,juce::Justification::centredLeft);
     }
-    drawPanel(g,{65,724,1490,179},"DETECTOR & GLOBAL CONTROL");
-    g.setColour(juce::Colour::fromRGB(60,71,79));g.drawVerticalLine(719,766,875);
-    g.drawVerticalLine(1157,766,875);
-    for(const auto& lab:labels)
+    for(size_t i=0;i<labels.size();++i){
+        if(advancedPage ? i<mainLabelCount : i>=mainLabelCount)continue;
+        const auto& lab=labels[i];
         text(g,lab.text,lab.cx-lab.width/2,lab.y,lab.width,20,12.3f,
              lab.y<185?juce::Colour::fromRGB(211,225,237):ink);
-    text(g,"CLEAN SIGNAL PATH  |  NO ADDED HARMONICS",1065,731,456,25,
-         11,juce::Colour::fromRGB(198,218,231),juce::Justification::centredRight);
+    }
     drawMeter(g,{938,149,113,22},processor.inputPeak.load()*12.f,"INPUT PEAK");
     drawMeter(g,{1062,149,113,22},processor.outputPeak.load()*12.f,"OUTPUT PEAK");
 }
