@@ -17,6 +17,8 @@ public:
     ~TdpAudioProcessorEditor() override;
     void paint(juce::Graphics&) override;
     void resized() override;
+    // Diagnostic capture only. Uses exact JUCE components and their painted state.
+    void setAdvancedPageForPreview(bool advanced);
 private:
     using SA=juce::AudioProcessorValueTreeState::SliderAttachment;
     using BA=juce::AudioProcessorValueTreeState::ButtonAttachment;
