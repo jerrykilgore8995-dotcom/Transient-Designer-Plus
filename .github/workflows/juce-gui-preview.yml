@@ -28,9 +28,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Editor capture failed: $LASTEXITCODE" }
           $preview = "Transient_Designer_Plus_Actual_JUCE_GUI.png"
           if (-not (Test-Path $preview)) { throw "Screenshot PNG is missing" }
+          if (-not (Test-Path "Transient_Designer_Plus_V2_Advanced_JUCE_GUI.png")) {
+            throw "Advanced JUCE screenshot is missing"
+          }
       - name: Upload exact JUCE editor screenshot
         uses: actions/upload-artifact@v4
         with:
           name: Transient-Designer-Plus-Actual-JUCE-GUI
-          path: Transient_Designer_Plus_Actual_JUCE_GUI.png
+          path: |
+            Transient_Designer_Plus_Actual_JUCE_GUI.png
+            Transient_Designer_Plus_V2_Advanced_JUCE_GUI.png
           if-no-files-found: error
